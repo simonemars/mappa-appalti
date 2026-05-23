@@ -49,6 +49,7 @@ agg = defaultdict(lambda: defaultdict(lambda: {
     'v': 0.0, 'c': 0,
     'ops': defaultdict(lambda: {'n':'','v':0.0,'c':0,'r':False}),
     'akq': defaultdict(float),       # framework parent CIG -> value contributed
+    'cap': 0,                        # # of contracts in this bucket that were anomaly-capped
 }))
 
 n_kept = 0
@@ -73,6 +74,8 @@ for c in contracts:
         if c.get('op_is_rti'): o['r'] = True
         if akq:
             b['akq'][akq] += imp
+        if c.get('capped'):
+            b['cap'] += 1
 
 out_sa = {}
 n_cat_dropped = 0
@@ -105,6 +108,7 @@ for sa_cf, divs in agg.items():
             't1v': round(t1v,3), 't3v': round(t3v,3),
             't1c': round(t1c,3), 't3c': round(t3c,3),
             'fd': round(fd, 3),
+            'cap': b['cap'],
         }
     if not cats: continue
     out_sa[sa_cf] = {

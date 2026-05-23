@@ -154,9 +154,19 @@ with open(os.path.join(RAW, 'aggiudicazioni_csv.csv'), encoding='utf-8') as f:
 print(f'  CIGs with aggiudicazione record: {len(awards):,}')
 
 # ============== ASSEMBLE: honest 2024 value ==============
+# Hard sanity cap on per-CIG annualized value. Any single CIG above this
+# is almost always an ANAC data-entry typo (e.g. EUR 14bn for a year of gas,
+# EUR 1.9bn for a dishwasher, EUR 3bn for a school field trip). Legitimate
+# multi-year frameworks above this threshold are already annualized down
+# via durata_prevista. Real single-year contracts essentially never exceed
+# this number — even huge national procurements get split into lots.
+ANOMALY_CAP_EUR = 100_000_000   # 100 million
+
 print('\nAssembling honest contracts dataset for 2024...')
 contracts = []
 n_no_winner = n_no_award = n_wrong_year = n_no_value = 0
+n_capped = 0
+sum_capped_excess = 0.0
 for cig, meta in cig_records.items():
     w = winners.get(cig)
     if not w: n_no_winner += 1; continue
@@ -165,25 +175,25 @@ for cig, meta in cig_records.items():
     if a['year'] != 2024:
         n_wrong_year += 1
         continue
-    # Pick the real lot value: prefer importo_lotto. If 0/missing, fall back
-    # to importo_aggiudicazione (this is fine for standalones; for framework
-    # children we already filtered to those WITH importo_lotto > 0 implicitly).
     val_lot = meta['lot']
     val_used = val_lot if val_lot > 0 else a['agg_value']
-    # If this is a framework child (has akq) and importo_aggiudicazione looks
-    # like the framework total (much bigger than importo_lotto), DEFINITELY
-    # don't use it.
     if val_used <= 0:
         n_no_value += 1
         continue
-    # Annualize: 2024 share of a multi-year contract
     dur = meta['dur_days']
-    if dur and dur > 0 and dur <= 3650:   # cap at 10 years to filter garbage
+    if dur and dur > 0 and dur <= 3650:
         years = dur / 365.25
         annual_factor = min(1.0, 1.0 / years)
     else:
-        annual_factor = 1.0   # assume single-year
+        annual_factor = 1.0
     val_2024 = val_used * annual_factor
+    # Apply anomaly cap
+    capped = False
+    if val_2024 > ANOMALY_CAP_EUR:
+        sum_capped_excess += (val_2024 - ANOMALY_CAP_EUR)
+        n_capped += 1
+        val_2024 = ANOMALY_CAP_EUR
+        capped = True
     contracts.append({
         'cig': cig,
         'sa_cf': meta['sa_cf'],
@@ -191,17 +201,19 @@ for cig, meta in cig_records.items():
         'op_cf': w['cf'],
         'op_nome': w['nome'],
         'op_is_rti': w['is_rti'],
-        'importo': val_2024,           # ANNUALIZED 2024 share
-        'importo_full': val_used,      # full lot value (not amortized)
-        'akq': meta['akq'],            # parent framework CIG (for dominance flag)
+        'importo': val_2024,
+        'importo_full': val_used,
+        'akq': meta['akq'],
         'dur_days': dur,
+        'capped': capped,
     })
 
 print(f'  Final 2024 contracts: {len(contracts):,}')
-print(f'  Dropped — no winner:        {n_no_winner:,}')
+print(f'  Dropped — no winner:         {n_no_winner:,}')
 print(f'  Dropped — no aggiudicazione: {n_no_award:,}')
 print(f'  Dropped — not 2024:          {n_wrong_year:,}')
 print(f'  Dropped — zero value:        {n_no_value:,}')
+print(f'  Capped at EUR {ANOMALY_CAP_EUR/1e6:.0f}M: {n_capped:,} contracts ({sum_capped_excess/1e9:.1f} bn removed as anomalies)')
 
 with open(OUT_PATH, 'w', encoding='utf-8') as f:
     json.dump(contracts, f, separators=(',',':'), ensure_ascii=False)

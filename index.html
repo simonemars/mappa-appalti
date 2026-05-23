@@ -544,6 +544,9 @@ async function loadGz(url) {
     if (b.fd && b.fd > 0.5) {
       html += '<div class="ih-note" style="background:rgba(212,165,116,0.15);color:var(--amber)">attenzione: ' + pct(b.fd) + ' del valore di questa categoria proviene da un singolo accordo quadro pluriennale (annualizzato).</div>';
     }
+    if (b.cap && b.cap > 0) {
+      html += '<div class="ih-note" style="background:rgba(212,165,116,0.15);color:var(--amber)">' + b.cap + ' contratto' + (b.cap===1?'':'i') + ' in questa categoria conteneva valori anomali (es. typo di registrazione) ed è stato limitato a € 100 mln per cig.</div>';
+    }
     if (s.ih) html += '<div class="ih-note">sa classificata come in-house — può procurare per conto di un altro ente.</div>';
     html += '</div>';
     m.getPopup().setContent(html);
@@ -571,6 +574,7 @@ async function loadGz(url) {
     <p><strong>cosa rappresenta ogni punto.</strong> una stazione appaltante (sa) iscritta all'anagrafe anac con sede in italia, posizionata sul centroide del comune istat. con leggero scostamento quando più sa condividono lo stesso centroide.</p>
     <p><strong>valori annualizzati 2024.</strong> per ogni cig si prende l'<code>importo_lotto</code> (valore del singolo lotto) — non l'<code>importo_aggiudicazione</code>, che nei dati anac è spesso duplicato sul totale dell'accordo quadro padre. il valore viene poi <em>amortizzato</em> sulla <code>durata_prevista</code> del contratto: un appalto triennale da € 30 mln contribuisce € 10 mln al 2024.</p>
     <p><strong>filtri applicati.</strong> tenuti solo i cig con <code>data_aggiudicazione_definitiva</code> nel 2024 (esclude le aggiudicazioni 2023 che compaiono nei record cig-2024). esclusi i cig "padre" degli accordi quadro (il loro valore è già contato nei figli).</p>
+    <p><strong>cap anti-anomalie.</strong> il valore annualizzato di ogni singolo cig è limitato a <strong>€ 100 mln</strong>. nei dati anac compaiono almeno 188 cig con importi palesemente errati (es. € 14 mld per un anno di gas, € 1,9 mld per una lavastoviglie, € 3 mld per un viaggio di istruzione) — typo di registrazione che inflavano i totali di ~€ 158 mld. i contratti reali super-grandi sono accordi quadro pluriennali, già correttamente ammortizzati.</p>
     <p><strong>operatori — deduplicazione.</strong> aggregati per codice fiscale (cf / partita iva). quando il cf manca, normalizzazione del nome (maiuscolo, rimozione di srl/spa/ecc.) e raggruppamento.</p>
     <p><strong>rti e consorzi.</strong> per ogni cig si attribuisce l'aggiudicazione al ruolo prevalente. le aggiudicazioni a rti sono segnalate con il tag <span class="pill rti">rti</span>.</p>
     <p><strong>categoria cpv.</strong> 2 cifre iniziali del codice cpv "prevalente" del cig. i cig fuori scopo dalle 10 divisioni mostrate confluiscono solo nel totale "tutte le categorie".</p>
