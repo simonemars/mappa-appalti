@@ -336,7 +336,7 @@
   </nav>
   <div class="brand">
     <h1>mappa appalti pubblici — italia</h1>
-    <div class="sub">2024 (anno solare) · fonte anac<span class="badge">campione 1 anno</span></div>
+    <div class="sub">2024 · valori annualizzati · fonte anac<span class="badge">campione 1 anno</span></div>
   </div>
   <div class="controls">
     <select id="cat-select" class="pill"></select>
@@ -358,7 +358,7 @@
   </aside>
 </main>
 <footer>
-  fonte dati: <strong>anac — banca dati nazionale dei contratti pubblici</strong> · dataset: <code>aggiudicazioni</code>, <code>aggiudicatari</code>, <code>cig-2024</code>, <code>stazioni-appaltanti</code> · fetch 2026-05-22 · finestra 2024 (anno solare) · geocoding istat via opendatasicilia/comuni-italiani · mappa <a href="https://leafletjs.com">leaflet</a>
+  fonte dati: <strong>anac — banca dati nazionale dei contratti pubblici</strong> · dataset: <code>aggiudicazioni</code>, <code>aggiudicatari</code>, <code>cig-2024</code>, <code>stazioni-appaltanti</code> · fetch 2026-05-22 · finestra 2024 (annualizzato) · geocoding istat via opendatasicilia/comuni-italiani · mappa <a href="https://leafletjs.com">leaflet</a>
 </footer>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" crossorigin=""></script>
@@ -541,6 +541,9 @@ async function loadGz(url) {
     html += '</ol>';
     html += '<div class="conc"><span>quota primo operatore (' + (currentMetric==='v'?'valore':'numero')+')</span><strong>' + pct(currentMetric==='v'?b.t1v:b.t1c) + '</strong></div>';
     html += '<div class="conc"><span>quota primi 3 operatori</span><strong>' + pct(currentMetric==='v'?b.t3v:b.t3c) + '</strong></div>';
+    if (b.fd && b.fd > 0.5) {
+      html += '<div class="ih-note" style="background:rgba(212,165,116,0.15);color:var(--amber)">attenzione: ' + pct(b.fd) + ' del valore di questa categoria proviene da un singolo accordo quadro pluriennale (annualizzato).</div>';
+    }
     if (s.ih) html += '<div class="ih-note">sa classificata come in-house — può procurare per conto di un altro ente.</div>';
     html += '</div>';
     m.getPopup().setContent(html);
@@ -566,13 +569,14 @@ async function loadGz(url) {
 
   document.getElementById('metodologia').innerHTML = `
     <p><strong>cosa rappresenta ogni punto.</strong> una stazione appaltante (sa) iscritta all'anagrafe anac con sede in italia, posizionata sul centroide del comune istat. con leggero scostamento quando più sa condividono lo stesso centroide.</p>
-    <p><strong>cosa misura il valore.</strong> somma degli <em>importi di aggiudicazione</em> (campo <code>importo_aggiudicazione</code> del dataset <code>aggiudicazioni</code>) dei cig aggiudicati nella categoria cpv selezionata. è il valore dell'aggiudicazione, non il pagato.</p>
-    <p><strong>finestra temporale.</strong> solo anno 2024 (campione v1).</p>
+    <p><strong>valori annualizzati 2024.</strong> per ogni cig si prende l'<code>importo_lotto</code> (valore del singolo lotto) — non l'<code>importo_aggiudicazione</code>, che nei dati anac è spesso duplicato sul totale dell'accordo quadro padre. il valore viene poi <em>amortizzato</em> sulla <code>durata_prevista</code> del contratto: un appalto triennale da € 30 mln contribuisce € 10 mln al 2024.</p>
+    <p><strong>filtri applicati.</strong> tenuti solo i cig con <code>data_aggiudicazione_definitiva</code> nel 2024 (esclude le aggiudicazioni 2023 che compaiono nei record cig-2024). esclusi i cig "padre" degli accordi quadro (il loro valore è già contato nei figli).</p>
     <p><strong>operatori — deduplicazione.</strong> aggregati per codice fiscale (cf / partita iva). quando il cf manca, normalizzazione del nome (maiuscolo, rimozione di srl/spa/ecc.) e raggruppamento.</p>
     <p><strong>rti e consorzi.</strong> per ogni cig si attribuisce l'aggiudicazione al ruolo prevalente. le aggiudicazioni a rti sono segnalate con il tag <span class="pill rti">rti</span>.</p>
     <p><strong>categoria cpv.</strong> 2 cifre iniziali del codice cpv "prevalente" del cig. i cig fuori scopo dalle 10 divisioni mostrate confluiscono solo nel totale "tutte le categorie".</p>
     <p><strong>concentrazione.</strong> quota del primo operatore (top-1) e dei primi 3 (top-3) sulla metrica attiva.</p>
-    <p><strong>centrali di committenza.</strong> alcune sa (es. aria spa, consip per parte nazionale) acquistano per conto di altri enti. il loro valore è alto perché aggregato.</p>
+    <p><strong>dominio da accordo quadro.</strong> quando una singola gara accordo-quadro pluriennale rappresenta più del 50% del valore di una categoria per una sa, viene segnalato esplicitamente nel popup.</p>
+    <p><strong>centrali di committenza.</strong> alcune sa (es. aria spa, consip, asp cosenza) acquistano per conto di altri enti — il loro valore è alto perché aggregato regionalmente.</p>
   `;
 
   sel.addEventListener('change', () => { currentCat = sel.value; restyleAll(); });

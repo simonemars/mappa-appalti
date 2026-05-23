@@ -15,7 +15,7 @@ import json, re, gzip, os
 from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CONTRACTS_PATH = os.path.join(HERE, 'raw', 'italy_contracts_2024.json')
+CONTRACTS_PATH = os.path.join(HERE, 'raw', 'italy_contracts_honest_2024.json')
 SAS_PATH = os.path.join(HERE, 'raw', 'italy_sas_geo.json')
 OUT_PATH = os.path.join(HERE, 'data', 'operators.json.gz')
 
