@@ -150,6 +150,44 @@
     font-weight: 500;
   }
 
+  /* tooltip — shows on hover of any element with [data-tooltip] */
+  [data-tooltip] { position: relative; }
+  [data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 10px); right: 0;
+    background: var(--bg-elev);
+    color: var(--text);
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border-mid);
+    white-space: pre-line;
+    max-width: 340px;
+    width: max-content;
+    font-size: 11.5px;
+    line-height: 1.55;
+    text-align: left;
+    text-transform: none;
+    letter-spacing: 0.01em;
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    z-index: 1000;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    pointer-events: none;
+  }
+  [data-tooltip]:hover::before {
+    content: '';
+    position: absolute;
+    top: 100%; right: 18px;
+    margin-top: 3px;
+    border: 6px solid transparent;
+    border-bottom-color: var(--border-mid);
+    z-index: 1001;
+    pointer-events: none;
+  }
+  [data-tooltip] em { color: var(--accent-strong); font-style: italic; }
+  [data-tooltip] strong { color: var(--text); font-weight: 500; }
+
   /* loading state */
   .loading {
     position: fixed; inset: 0;
@@ -344,6 +382,10 @@
       <button data-m="v" class="active">per valore</button>
       <button data-m="c">per numero</button>
     </div>
+    <div class="toggle" id="value-mode-toggle" data-tooltip="annualizzato (predefinito): appalti pluriennali ripartiti sulla durata; cap a €100 mln/cig per filtrare typo evidenti nei dati anac. mostra il flusso reale del 2024 (€133 mld).&#10;&#10;nominale: valore totale dell'appalto contato per intero nell'anno di aggiudicazione, senza cap. coincide con la metodologia ufficiale anac (€296 mld vs anac €272 mld nel 2024). include anche le anomalie/typo della fonte anac (es. €14 mld per un anno di gas).">
+      <button data-vm="v" class="active">annualizzato</button>
+      <button data-vm="vn">nominale</button>
+    </div>
   </div>
 </header>
 <main class="split">
@@ -488,20 +530,22 @@ async function loadGz(url) {
     markers.push(m);
   }
 
-  let currentCat = 'ALL', currentMetric = 'v';
+  let currentCat = 'ALL', currentMetric = 'v', currentValueMode = 'v';   // 'v' annualized | 'vn' nominal
   const bucketFor = s => s.cats[currentCat];
+  const valKey = () => currentValueMode === 'vn' ? 'vn' : 'v';
 
   function restyleAll(){
     cluster.clearLayers();
     const toAdd = []; let totV=0, totC=0, totSA=0;
+    const vk = valKey();
     for (const m of markers){
       const b = bucketFor(m._sa);
       if (!b) continue;
-      const val = currentMetric==='v' ? b.v : b.c;
+      const val = currentMetric==='v' ? b[vk] : b.c;
       m.setStyle({ radius: radiusFor(currentMetric, val), fillColor: '#ffffff', color: '#0f172a', weight: 0.8, fillOpacity: 0.95 });
       if (m.isPopupOpen()) renderPopup(m);
       toAdd.push(m);
-      totV += b.v; totC += b.c; totSA++;
+      totV += b[vk]; totC += b.c; totSA++;
     }
     cluster.addLayers(toAdd);
     updateStats(totV, totC, totSA);
@@ -510,9 +554,13 @@ async function loadGz(url) {
   function renderPopup(m){
     const s = m._sa; const b = bucketFor(s); if (!b) return;
     const catLabel = currentCat==='ALL' ? 'tutte le categorie' : (currentCat + ' — ' + CPV[currentCat].toLowerCase());
-    const sortIdx = currentMetric==='v' ? 1 : 2;
+    const vk = valKey();
+    const vIdx = currentValueMode === 'vn' ? 2 : 1;
+    // Each op row: [name, v_annual, vn_nominal, count, rti]
+    const sortIdx = currentMetric === 'v' ? vIdx : 3;
     const list = b.o.slice().sort((a,bb) => bb[sortIdx] - a[sortIdx]).slice(0, 5);
-    const totalForShare = currentMetric==='v' ? b.v : b.c;
+    const totalForShare = currentMetric==='v' ? b[vk] : b.c;
+    const vmodeLabel = currentValueMode === 'vn' ? 'nominale' : 'annualizzato';
     let html = '<div class="popup">';
     html += '<h3>' + esc(s.n.toLowerCase()) + '</h3>';
     let metaParts = [];
@@ -520,14 +568,15 @@ async function loadGz(url) {
     metaParts.push(esc(s.ct.toLowerCase()) + ' (' + esc(s.pv) + ')');
     if (s.ih) metaParts.push('<span class="pill ih">in-house</span>');
     if (s.pa) metaParts.push('<span class="pill">partecipata</span>');
-    html += '<div class="meta">' + metaParts.join(' · ') + '<br><em>' + esc(catLabel) + '</em></div>';
-    html += '<div class="tot"><span>valore totale aggiudicato</span><strong>' + eur(b.v) + '</strong></div>';
+    html += '<div class="meta">' + metaParts.join(' · ') + '<br><em>' + esc(catLabel) + '</em> · valore ' + vmodeLabel + '</div>';
+    html += '<div class="tot"><span>valore totale aggiudicato</span><strong>' + eur(b[vk]) + '</strong></div>';
     html += '<div class="tot"><span>numero di contratti</span><strong>' + itf0.format(b.c) + '</strong></div>';
     html += '<div class="tot"><span>operatori distinti</span><strong>' + itf0.format(b.no) + '</strong></div>';
     html += '<div class="section-label">top 5 operatori · ' + (currentMetric==='v'?'per valore':'per numero di gare') + '</div>';
     html += '<ol>';
     for (const row of list){
-      const [nm, val, cnt, rti] = row;
+      const [nm, val_a, val_n, cnt, rti] = row;
+      const val = currentValueMode === 'vn' ? val_n : val_a;
       const metric = currentMetric==='v' ? val : cnt;
       const share = totalForShare>0 ? metric/totalForShare : 0;
       const safeName = esc((nm || '(non specificato)').toLowerCase());
@@ -575,6 +624,7 @@ async function loadGz(url) {
     <p><strong>valori annualizzati 2024.</strong> per ogni cig si prende l'<code>importo_lotto</code> (valore del singolo lotto) — non l'<code>importo_aggiudicazione</code>, che nei dati anac è spesso duplicato sul totale dell'accordo quadro padre. il valore viene poi <em>amortizzato</em> sulla <code>durata_prevista</code> del contratto: un appalto triennale da € 30 mln contribuisce € 10 mln al 2024.</p>
     <p><strong>filtri applicati.</strong> tenuti solo i cig con <code>data_aggiudicazione_definitiva</code> nel 2024 (esclude le aggiudicazioni 2023 che compaiono nei record cig-2024). esclusi i cig "padre" degli accordi quadro (il loro valore è già contato nei figli).</p>
     <p><strong>cap anti-anomalie.</strong> il valore annualizzato di ogni singolo cig è limitato a <strong>€ 100 mln</strong>. nei dati anac compaiono almeno 188 cig con importi palesemente errati (es. € 14 mld per un anno di gas, € 1,9 mld per una lavastoviglie, € 3 mld per un viaggio di istruzione) — typo di registrazione che inflavano i totali di ~€ 158 mld. i contratti reali super-grandi sono accordi quadro pluriennali, già correttamente ammortizzati.</p>
+    <p><strong>annualizzato vs nominale (toggle in alto).</strong> <em>annualizzato</em>: appalto pluriennale ripartito sulla durata, con cap di €100 mln/cig per escludere typo evidenti nei dati anac. è la vista "honest" — flusso reale 2024 ~€133 mld. <em>nominale</em>: valore totale registrato nell'anno di aggiudicazione, senza cap. riproduce la metodologia ufficiale anac (~€296 mld vs €272 mld anac 2024) ma include anche le anomalie di registrazione della fonte (es. €14 mld per un anno di gas, €1,9 mld per una lavastoviglie).</p>
     <p><strong>operatori — deduplicazione.</strong> aggregati per codice fiscale (cf / partita iva). quando il cf manca, normalizzazione del nome (maiuscolo, rimozione di srl/spa/ecc.) e raggruppamento.</p>
     <p><strong>rti e consorzi.</strong> per ogni cig si attribuisce l'aggiudicazione al ruolo prevalente. le aggiudicazioni a rti sono segnalate con il tag <span class="pill rti">rti</span>.</p>
     <p><strong>categoria cpv.</strong> 2 cifre iniziali del codice cpv "prevalente" del cig. i cig fuori scopo dalle 10 divisioni mostrate confluiscono solo nel totale "tutte le categorie".</p>
@@ -592,8 +642,19 @@ async function loadGz(url) {
       restyleAll();
     });
   });
+  document.querySelectorAll('#value-mode-toggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#value-mode-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentValueMode = btn.dataset.vm;
+      restyleAll();
+    });
+  });
   window.__app = { map, markers, cluster, SAS, restyleAll };
   restyleAll();
+  // Defensive: re-render after a tick in case the map container sized
+  // differently before fonts/styles settled.
+  setTimeout(() => { map.invalidateSize(); cluster.refreshClusters(); }, 200);
 })();
 </script>
 </body>

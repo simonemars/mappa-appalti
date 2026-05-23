@@ -46,15 +46,16 @@ with open(SAS_PATH) as f:
 
 # Aggregate per (sa, cat) — track operators + framework groups
 agg = defaultdict(lambda: defaultdict(lambda: {
-    'v': 0.0, 'c': 0,
-    'ops': defaultdict(lambda: {'n':'','v':0.0,'c':0,'r':False}),
-    'akq': defaultdict(float),       # framework parent CIG -> value contributed
-    'cap': 0,                        # # of contracts in this bucket that were anomaly-capped
+    'v': 0.0, 'vn': 0.0, 'c': 0,
+    'ops': defaultdict(lambda: {'n':'','v':0.0,'vn':0.0,'c':0,'r':False}),
+    'akq': defaultdict(float),
+    'cap': 0,
 }))
 
 n_kept = 0
 for c in contracts:
     imp = c.get('importo', 0) or 0
+    imp_n = c.get('importo_n', imp) or imp
     if imp <= 0: continue
     div = c.get('cpv_div','')
     if not div: continue
@@ -66,11 +67,11 @@ for c in contracts:
     for cat in (div, 'ALL'):
         if cat != 'ALL' and cat not in SCOPE: continue
         b = agg[sa][cat]
-        b['v'] += imp; b['c'] += 1
+        b['v'] += imp; b['vn'] += imp_n; b['c'] += 1
         o = b['ops'][k]
         nm = c.get('op_nome','')
         if len(nm) > len(o['n']): o['n'] = nm
-        o['v'] += imp; o['c'] += 1
+        o['v'] += imp; o['vn'] += imp_n; o['c'] += 1
         if c.get('op_is_rti'): o['r'] = True
         if akq:
             b['akq'][akq] += imp
@@ -92,18 +93,18 @@ for sa_cf, divs in agg.items():
         seen = {}
         for k, o in by_val + by_cnt:
             if k not in seen: seen[k] = o
-        ops_payload = [[short(o['n']), round(o['v']), o['c'], 1 if o['r'] else 0] for _, o in seen.items()]
-        tot_v = b['v']; tot_c = b['c']
+        # Each op row: [name, v_annualized, vn_nominal, count, rti01]
+        ops_payload = [[short(o['n']), round(o['v']), round(o['vn']), o['c'], 1 if o['r'] else 0] for _, o in seen.items()]
+        tot_v = b['v']; tot_vn = b['vn']; tot_c = b['c']
         t1v = by_val[0][1]['v']/tot_v if tot_v>0 else 0
         t3v = sum(o['v'] for _,o in by_val[:3])/tot_v if tot_v>0 else 0
         t1c = by_cnt[0][1]['c']/tot_c if tot_c>0 else 0
         t3c = sum(o['c'] for _,o in by_cnt[:3])/tot_c if tot_c>0 else 0
-        # Framework dominance: highest share from a single parent framework
         fd = 0.0
         if b['akq'] and tot_v > 0:
             fd = max(b['akq'].values()) / tot_v
         cats[div] = {
-            'v': round(tot_v), 'c': tot_c, 'no': len(b['ops']),
+            'v': round(tot_v), 'vn': round(tot_vn), 'c': tot_c, 'no': len(b['ops']),
             'o': ops_payload,
             't1v': round(t1v,3), 't3v': round(t3v,3),
             't1c': round(t1c,3), 't3c': round(t3c,3),

@@ -54,12 +54,14 @@ print(f'  {len(sas):,} SAs')
 print('Aggregating per operator...')
 # ops[key] = {'name': str, 'cf': str, 'kind': 'CF'|'NM', 'v': float, 'c': int,
 #             'rti': bool, 'cpv': {div: {v,c}}, 'sas': {sa_cf: {v, c}}}
-ops = defaultdict(lambda: {'name': '', 'cf': '', 'kind': '', 'v': 0.0, 'c': 0,
-                            'rti': False, 'cpv': defaultdict(lambda: {'v':0.0,'c':0}),
-                            'sas': defaultdict(lambda: {'v':0.0,'c':0})})
+ops = defaultdict(lambda: {'name': '', 'cf': '', 'kind': '', 'v': 0.0, 'vn': 0.0, 'c': 0,
+                            'rti': False,
+                            'cpv': defaultdict(lambda: {'v':0.0,'vn':0.0,'c':0}),
+                            'sas': defaultdict(lambda: {'v':0.0,'vn':0.0,'c':0})})
 
 for c in contracts:
     imp = c.get('importo', 0) or 0
+    imp_n = c.get('importo_n', imp) or imp
     if imp <= 0: continue
     key = op_key(c)
     if not key: continue
@@ -70,17 +72,19 @@ for c in contracts:
     if not o['kind']:
         o['kind'] = 'CF' if not key.startswith('NM:') else 'NM'
         o['cf'] = key if o['kind'] == 'CF' else ''
-    o['v'] += imp
+    o['v'] += imp; o['vn'] += imp_n
     o['c'] += 1
     if c.get('op_is_rti'):
         o['rti'] = True
     div = c.get('cpv_div', '') or ''
     if div:
         o['cpv'][div]['v'] += imp
+        o['cpv'][div]['vn'] += imp_n
         o['cpv'][div]['c'] += 1
     sa_cf = c.get('sa_cf', '')
     if sa_cf:
         o['sas'][sa_cf]['v'] += imp
+        o['sas'][sa_cf]['vn'] += imp_n
         o['sas'][sa_cf]['c'] += 1
 
 print(f'  Distinct operators: {len(ops):,}')
@@ -110,6 +114,7 @@ for key, o in filtered.items():
             'la': round(sa['lat'], 5),
             'lo': round(sa['lon'], 5),
             'v': round(agg['v']),
+            'vn': round(agg['vn']),
             'c': agg['c'],
         })
     # Count distinct regions / provs across ALL SAs (not just top 10)
@@ -121,16 +126,17 @@ for key, o in filtered.items():
     total_v = o['v']
     t1s = top_sas[0][1]['v'] / total_v if total_v > 0 else 0
     t3s = sum(s[1]['v'] for s in top_sas[:3]) / total_v if total_v > 0 else 0
-    # CPV breakdown — only include scope CPVs + total elsewhere
+    # CPV breakdown — each entry: [v_annualized, vn_nominal, count]
     cpv_payload = {}
     for div, agg in o['cpv'].items():
         if div in CPV_DIVS:
-            cpv_payload[div] = [round(agg['v']), agg['c']]
+            cpv_payload[div] = [round(agg['v']), round(agg['vn']), agg['c']]
     out_ops[key] = {
         'n': short(o['name'], 70),
         'cf': o['cf'],
         'k': o['kind'],
         'v': round(o['v']),
+        'vn': round(o['vn']),
         'c': o['c'],
         'nsa': len(o['sas']),
         'nrg': len(distinct_regions),

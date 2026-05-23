@@ -194,6 +194,11 @@ for cig, meta in cig_records.items():
         n_capped += 1
         val_2024 = ANOMALY_CAP_EUR
         capped = True
+    # Nominal value: full lot value, NO typo cap. The nominal-mode total
+    # reproduces ANAC's official methodology — which means it inherits
+    # ANAC's source typos too (€14bn gas, €288bn Dulbecco, etc.). The UI
+    # makes this trade-off explicit.
+    val_nominal = val_used
     contracts.append({
         'cig': cig,
         'sa_cf': meta['sa_cf'],
@@ -201,7 +206,8 @@ for cig, meta in cig_records.items():
         'op_cf': w['cf'],
         'op_nome': w['nome'],
         'op_is_rti': w['is_rti'],
-        'importo': val_2024,
+        'importo': val_2024,            # annualized + capped
+        'importo_n': val_nominal,       # nominal full-lot + capped
         'importo_full': val_used,
         'akq': meta['akq'],
         'dur_days': dur,
