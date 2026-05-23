@@ -7,7 +7,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_GZ_PATH = os.path.join(HERE, 'raw', 'agg_italia.json.gz')
 REGIONS_PATH = os.path.join(HERE, 'raw', 'italy_regions.geojson')
 PLACES_PATH = os.path.join(HERE, 'raw', 'italia_places.json')
-OUT_PATH = os.path.join(HERE, 'appalti_italia.html')
+OUT_PATH = os.path.join(HERE, 'index.html')
 
 with open(DATA_GZ_PATH, 'rb') as f:
     raw_gz = f.read()
