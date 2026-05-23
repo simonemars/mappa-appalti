@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Heavy raw / intermediate data — re-derivable from ANAC + the build script.
+# Only the small derived files needed by build_html.py are kept (see force-includes below).
+raw/*
+
+# Force-include the build inputs.
+!raw/agg_italia.json.gz
+!raw/italy_regions.geojson
+!raw/italia_places.json
+
+# Local Claude harness state — don't ship.
+.claude/settings.local.json
