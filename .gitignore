@@ -11,8 +11,7 @@ venv/
 # Only the small derived files needed by build_html.py are kept (see force-includes below).
 raw/*
 
-# Force-include the build inputs.
-!raw/agg_italia.json.gz
+# Force-include the small build inputs (embedded into the HTMLs by build_html.py).
 !raw/italy_regions.geojson
 !raw/italia_places.json
 
