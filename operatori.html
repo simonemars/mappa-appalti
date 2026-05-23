@@ -453,6 +453,10 @@
   </div>
   <div class="controls">
     <select id="cat-filter" class="pill"></select>
+    <div class="toggle" id="sort-toggle">
+      <button data-s="v" class="active">per valore</button>
+      <button data-s="c">per numero</button>
+    </div>
   </div>
 </header>
 <main class="split">
@@ -512,9 +516,10 @@ async function loadGz(url) {
   const ALL_OPS = Object.entries(OPS).map(([key, o]) => ({ key, ...o, _search: (o.n || '').toLowerCase() }));
   console.log('Operators loaded:', ALL_OPS.length);
 
-  // Render list — by current filter + search
+  // Render list — by current filter + search + sort metric
   let currentFilter = 'ALL';
   let currentSearch = '';
+  let currentSort = 'v';   // 'v' for value, 'c' for contract count
   let selectedKey = null;
   const LIST_LIMIT = 200;
 
@@ -527,10 +532,10 @@ async function loadGz(url) {
     if (currentFilter !== 'ALL') {
       arr = arr.filter(o => o.cpv && o.cpv[currentFilter]);
       arr = arr.map(o => ({ ...o, _filt_v: o.cpv[currentFilter][0], _filt_c: o.cpv[currentFilter][1] }));
-      arr.sort((a,b) => b._filt_v - a._filt_v);
+      arr.sort((a,b) => currentSort === 'v' ? b._filt_v - a._filt_v : b._filt_c - a._filt_c);
     } else {
       arr = arr.slice();
-      arr.sort((a,b) => b.v - a.v);
+      arr.sort((a,b) => currentSort === 'v' ? b.v - a.v : b.c - a.c);
     }
     return arr;
   }
@@ -546,9 +551,12 @@ async function loadGz(url) {
       const v = currentFilter==='ALL' ? o.v : o._filt_v;
       const c = currentFilter==='ALL' ? o.c : o._filt_c;
       const active = o.key === selectedKey ? ' active' : '';
+      // Bold whichever metric is currently driving the sort
+      const valStr = currentSort === 'v' ? '<strong>' + eurShort(v) + '</strong>' : eurShort(v);
+      const cntStr = currentSort === 'c' ? '<strong>' + itf0.format(c) + ' contratti</strong>' : itf0.format(c) + ' contratti';
       return '<div class="op-row' + active + '" data-key="' + esc(o.key) + '">' +
         '<div class="name">' + esc((o.n || '').toLowerCase()) + '</div>' +
-        '<div class="meta">' + eurShort(v) + ' · ' + itf0.format(c) + ' contratti · <strong>' + itf0.format(o.nsa) + '</strong> sa · <strong>' + itf0.format(o.nrg) + '</strong> regioni</div>' +
+        '<div class="meta">' + valStr + ' · ' + cntStr + ' · ' + itf0.format(o.nsa) + ' sa · ' + itf0.format(o.nrg) + ' regioni</div>' +
         '</div>';
     }).join('');
     // hook up clicks
@@ -673,6 +681,14 @@ async function loadGz(url) {
   catFilter.addEventListener('change', (e) => {
     currentFilter = e.target.value;
     renderList();
+  });
+  document.querySelectorAll('#sort-toggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#sort-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentSort = btn.dataset.s;
+      renderList();
+    });
   });
 
   renderList();
