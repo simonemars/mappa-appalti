@@ -128,7 +128,7 @@ print(f'  CIGs with winner: {len(winners):,}')
 
 # ============== PASS 4: join aggiudicazioni — get importo + date ==============
 print('\nPass 4: joining aggiudicazioni (importo + date)...')
-awards = {}  # cig -> {agg_value, agg_date, year, n_rows}
+awards = {}  # cig -> {agg_value, agg_date, year, n_rows, n_bidders, ribasso_pct}
 n=0
 with open(os.path.join(RAW, 'aggiudicazioni_csv.csv'), encoding='utf-8') as f:
     r = csv.DictReader(f, delimiter=';')
@@ -142,15 +142,32 @@ with open(os.path.join(RAW, 'aggiudicazioni_csv.csv'), encoding='utf-8') as f:
         yr = None
         if len(d) >= 4 and d[:4].isdigit():
             yr = int(d[:4])
+        # Competition signals
+        try: nbid = int(float(row.get('numero_offerte_ammesse') or 0))
+        except: nbid = 0
+        try: noff = int(float(row.get('num_imprese_offerenti') or 0))
+        except: noff = 0
+        # Prefer numero_offerte_ammesse; fall back to num_imprese_offerenti
+        bidders = nbid if nbid > 0 else noff
+        try: rib = float(row.get('ribasso_aggiudicazione') or 0)
+        except: rib = 0.0
+        # Ribasso in ANAC is stored as a fraction (0.05 = 5%) for sane rows, but
+        # there are corrupted rows with absurd values. Clamp to [0, 1] (0-100%).
+        if rib < 0 or rib > 1.0:
+            rib = None   # ignore obviously invalid
         existing = awards.get(cig)
         if existing is None:
-            awards[cig] = {'agg_value': imp, 'agg_date': d, 'year': yr, 'n_rows': 1}
+            awards[cig] = {'agg_value': imp, 'agg_date': d, 'year': yr, 'n_rows': 1,
+                           'bidders': bidders, 'rib': rib}
         else:
             existing['agg_value'] += imp
             existing['n_rows'] += 1
             if d and (not existing['agg_date'] or d > existing['agg_date']):
-                existing['agg_date'] = d
-                existing['year'] = yr
+                existing['agg_date'] = d; existing['year'] = yr
+            if bidders > (existing.get('bidders') or 0):
+                existing['bidders'] = bidders
+            if existing.get('rib') is None and rib is not None:
+                existing['rib'] = rib
 print(f'  CIGs with aggiudicazione record: {len(awards):,}')
 
 # ============== ASSEMBLE: honest 2024 value ==============
@@ -206,12 +223,14 @@ for cig, meta in cig_records.items():
         'op_cf': w['cf'],
         'op_nome': w['nome'],
         'op_is_rti': w['is_rti'],
-        'importo': val_2024,            # annualized + capped
-        'importo_n': val_nominal,       # nominal full-lot + capped
+        'importo': val_2024,
+        'importo_n': val_nominal,
         'importo_full': val_used,
         'akq': meta['akq'],
         'dur_days': dur,
         'capped': capped,
+        'bidders': a.get('bidders') or 0,
+        'rib': a.get('rib'),
     })
 
 print(f'  Final 2024 contracts: {len(contracts):,}')

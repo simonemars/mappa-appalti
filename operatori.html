@@ -601,9 +601,18 @@ async function loadGz(url) {
       const active = o.key === selectedKey ? ' active' : '';
       const valStr = currentSort === 'v' ? '<strong>' + eurShort(v) + '</strong>' : eurShort(v);
       const cntStr = currentSort === 'c' ? '<strong>' + itf0.format(c) + ' contratti</strong>' : itf0.format(c) + ' contratti';
+      // Inline competition signal: average bidders when this op wins (if data)
+      let compStr = '';
+      if (o.ab != null) {
+        const color = o.ab <= 1.5 ? '#dc2626' : o.ab <= 3 ? '#facc15' : '#16a34a';
+        compStr = '<span style="color:' + color + ';">media ' + o.ab.toFixed(1).replace('.',',') + ' offerenti</span>';
+      } else {
+        compStr = '<span style="color:var(--text-dim);">offerte non pubblicate</span>';
+      }
       return '<div class="op-row' + active + '" data-key="' + esc(o.key) + '">' +
         '<div class="name">' + esc((o.n || '').toLowerCase()) + '</div>' +
-        '<div class="meta">' + valStr + ' · ' + cntStr + ' · ' + itf0.format(o.nsa) + ' sa · ' + itf0.format(o.nrg) + ' regioni</div>' +
+        '<div class="meta">' + valStr + ' · ' + cntStr + ' · ' + itf0.format(o.nsa) + ' sa</div>' +
+        '<div class="meta" style="margin-top:2px">' + compStr + '</div>' +
         '</div>';
     }).join('');
     // hook up clicks
@@ -663,6 +672,25 @@ async function loadGz(url) {
     html += '<div class="stat-card"><div class="label">quota top-1 cliente</div><div class="value">' + pct(o.t1s) + '</div><div class="sub">peso del primo cliente sul fatturato</div></div>';
     html += '<div class="stat-card"><div class="label">quota top-3 clienti</div><div class="value">' + pct(o.t3s) + '</div><div class="sub">peso dei primi 3 clienti</div></div>';
     html += '</div>';
+
+    // Competition received: how contested were this operator's wins?
+    if (o.ab != null) {
+      html += '<div class="section-title">concorrenza ricevuta · su ' + itf0.format(o.bn) + ' gare con dato pubblicato</div>';
+      html += '<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">';
+      const compColor = o.ab <= 1.5 ? 'var(--amber)' : o.ab <= 3 ? '#facc15' : '#84cc16';
+      html += '<div class="stat-card"><div class="label">media offerenti</div><div class="value" style="color:' + compColor + '">' + o.ab.toFixed(1).replace('.',',') + '</div><div class="sub">per gara vinta</div></div>';
+      const singleColor = o.ps >= 0.5 ? 'var(--amber)' : o.ps >= 0.25 ? '#facc15' : '#84cc16';
+      html += '<div class="stat-card"><div class="label">vinte senza concorrenti</div><div class="value" style="color:' + singleColor + '">' + pct(o.ps) + '</div><div class="sub">gare con 1 solo offerente</div></div>';
+      if (o.ar != null) {
+        html += '<div class="stat-card"><div class="label">ribasso medio offerto</div><div class="value">' + pct(o.ar) + '</div><div class="sub">sconto medio sul base d\'asta</div></div>';
+      } else {
+        html += '<div class="stat-card"><div class="label">ribasso medio offerto</div><div class="value" style="color:var(--text-dim)">n.d.</div><div class="sub">non pubblicato</div></div>';
+      }
+      html += '</div>';
+    } else {
+      html += '<div class="section-title">concorrenza ricevuta</div>';
+      html += '<div class="card" style="color:var(--text-dim);font-size:12px">anac non pubblica dati sulle offerte ricevute per nessuna delle gare vinte da questo operatore.</div>';
+    }
 
     // Footprint: top SAs list + mini map
     html += '<div class="section-title">footprint · top 10 stazioni appaltanti per valore</div>';

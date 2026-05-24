@@ -50,6 +50,12 @@ agg = defaultdict(lambda: defaultdict(lambda: {
     'ops': defaultdict(lambda: {'n':'','v':0.0,'vn':0.0,'c':0,'r':False}),
     'akq': defaultdict(float),
     'cap': 0,
+    # Competition accumulators (per bucket)
+    'bid_sum': 0,        # sum of bidder counts (for mean)
+    'bid_n': 0,          # # contracts with bidder data
+    'single': 0,         # # contracts with exactly 1 bidder
+    'rib_sum': 0.0,      # sum of ribasso pct
+    'rib_n': 0,          # # contracts with rib data
 }))
 
 n_kept = 0
@@ -64,6 +70,8 @@ for c in contracts:
     sa = c['sa_cf']
     n_kept += 1
     akq = c.get('akq', '') or ''
+    bidders = c.get('bidders') or 0
+    rib = c.get('rib')
     for cat in (div, 'ALL'):
         if cat != 'ALL' and cat not in SCOPE: continue
         b = agg[sa][cat]
@@ -77,6 +85,14 @@ for c in contracts:
             b['akq'][akq] += imp
         if c.get('capped'):
             b['cap'] += 1
+        if bidders > 0:
+            b['bid_sum'] += bidders
+            b['bid_n'] += 1
+            if bidders == 1:
+                b['single'] += 1
+        if rib is not None:
+            b['rib_sum'] += rib
+            b['rib_n'] += 1
 
 out_sa = {}
 n_cat_dropped = 0
@@ -103,6 +119,10 @@ for sa_cf, divs in agg.items():
         fd = 0.0
         if b['akq'] and tot_v > 0:
             fd = max(b['akq'].values()) / tot_v
+        # Competition metrics
+        avg_bid = (b['bid_sum'] / b['bid_n']) if b['bid_n'] > 0 else None
+        pct_single = (b['single'] / b['bid_n']) if b['bid_n'] > 0 else None
+        avg_rib = (b['rib_sum'] / b['rib_n']) if b['rib_n'] > 0 else None
         cats[div] = {
             'v': round(tot_v), 'vn': round(tot_vn), 'c': tot_c, 'no': len(b['ops']),
             'o': ops_payload,
@@ -110,6 +130,10 @@ for sa_cf, divs in agg.items():
             't1c': round(t1c,3), 't3c': round(t3c,3),
             'fd': round(fd, 3),
             'cap': b['cap'],
+            'ab': round(avg_bid, 2) if avg_bid is not None else None,    # avg bidders
+            'ps': round(pct_single, 3) if pct_single is not None else None,  # share single-bidder
+            'ar': round(avg_rib, 4) if avg_rib is not None else None,    # avg ribasso (0-1)
+            'bn': b['bid_n'],   # # contracts with bidder data (for confidence)
         }
     if not cats: continue
     out_sa[sa_cf] = {

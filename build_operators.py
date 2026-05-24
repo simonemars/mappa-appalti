@@ -57,7 +57,9 @@ print('Aggregating per operator...')
 ops = defaultdict(lambda: {'name': '', 'cf': '', 'kind': '', 'v': 0.0, 'vn': 0.0, 'c': 0,
                             'rti': False,
                             'cpv': defaultdict(lambda: {'v':0.0,'vn':0.0,'c':0}),
-                            'sas': defaultdict(lambda: {'v':0.0,'vn':0.0,'c':0})})
+                            'sas': defaultdict(lambda: {'v':0.0,'vn':0.0,'c':0}),
+                            'bid_sum': 0, 'bid_n': 0, 'single': 0,
+                            'rib_sum': 0.0, 'rib_n': 0})
 
 for c in contracts:
     imp = c.get('importo', 0) or 0
@@ -86,6 +88,17 @@ for c in contracts:
         o['sas'][sa_cf]['v'] += imp
         o['sas'][sa_cf]['vn'] += imp_n
         o['sas'][sa_cf]['c'] += 1
+    # Competition: how contested were this operator's wins?
+    bidders = c.get('bidders') or 0
+    if bidders > 0:
+        o['bid_sum'] += bidders
+        o['bid_n'] += 1
+        if bidders == 1:
+            o['single'] += 1
+    rib = c.get('rib')
+    if rib is not None:
+        o['rib_sum'] += rib
+        o['rib_n'] += 1
 
 print(f'  Distinct operators: {len(ops):,}')
 
@@ -131,6 +144,9 @@ for key, o in filtered.items():
     for div, agg in o['cpv'].items():
         if div in CPV_DIVS:
             cpv_payload[div] = [round(agg['v']), round(agg['vn']), agg['c']]
+    avg_bid = (o['bid_sum'] / o['bid_n']) if o['bid_n'] > 0 else None
+    pct_single = (o['single'] / o['bid_n']) if o['bid_n'] > 0 else None
+    avg_rib = (o['rib_sum'] / o['rib_n']) if o['rib_n'] > 0 else None
     out_ops[key] = {
         'n': short(o['name'], 70),
         'cf': o['cf'],
@@ -146,6 +162,10 @@ for key, o in filtered.items():
         'sas': sa_records,
         't1s': round(t1s, 3),
         't3s': round(t3s, 3),
+        'ab': round(avg_bid, 2) if avg_bid is not None else None,
+        'ps': round(pct_single, 3) if pct_single is not None else None,
+        'ar': round(avg_rib, 4) if avg_rib is not None else None,
+        'bn': o['bid_n'],
     }
 
 data = {

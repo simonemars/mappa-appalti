@@ -427,12 +427,17 @@ __INDEX_STYLE_EXTRA__
       <button data-vm="v" class="active">annualizzato</button>
       <button data-vm="vn">nominale</button>
     </div>
+    <div class="toggle" id="color-mode-toggle" data-tooltip="neutro: tutti i punti sono bianchi (stessa dimensione = stesso valore).&#10;&#10;concorrenza: ogni punto è colorato in base al numero medio di offerenti per gara. rosso = poco contestato (1 offerente medio); verde = molto contestato (5+ offerenti medi). i punti grigi sono sa per cui anac non ha pubblicato i dati sulle offerte ricevute.&#10;&#10;solo ~17% delle sa hanno i dati sulla competizione; le altre restano grigie.">
+      <button data-cm="n" class="active">neutro</button>
+      <button data-cm="comp">concorrenza</button>
+    </div>
   </div>
 </header>
 <main class="split">
   <div id="map"></div>
   <aside id="sidebar">
     <div id="meta-info"></div>
+    <div id="comp-legend" style="display:none"></div>
     <div id="stats"></div>
     <details open>
       <summary>metodologia</summary>
@@ -571,25 +576,60 @@ async function loadGz(url) {
     markers.push(m);
   }
 
-  let currentCat = 'ALL', currentMetric = 'v', currentValueMode = 'v';   // 'v' annualized | 'vn' nominal
+  let currentCat = 'ALL', currentMetric = 'v', currentValueMode = 'v', currentColorMode = 'n';
   const bucketFor = s => s.cats[currentCat];
   const valKey = () => currentValueMode === 'vn' ? 'vn' : 'v';
+
+  // Competition color scale — based on avg bidders per gara.
+  // 1 = uncontested (red), 5+ = healthy competition (green).
+  function competitionColor(avgBid) {
+    if (avgBid == null) return '#475569';     // no data: dark gray
+    if (avgBid <= 1.05) return '#dc2626';     // red — essentially uncontested
+    if (avgBid <= 1.5)  return '#ea580c';     // orange-red
+    if (avgBid <= 2.0)  return '#f97316';     // orange
+    if (avgBid <= 3.0)  return '#facc15';     // yellow
+    if (avgBid <= 5.0)  return '#84cc16';     // lime
+    return '#16a34a';                          // green — strongly contested
+  }
 
   function restyleAll(){
     cluster.clearLayers();
     const toAdd = []; let totV=0, totC=0, totSA=0;
     const vk = valKey();
+    const compMode = currentColorMode === 'comp';
     for (const m of markers){
       const b = bucketFor(m._sa);
       if (!b) continue;
       const val = currentMetric==='v' ? b[vk] : b.c;
-      m.setStyle({ radius: radiusFor(currentMetric, val), fillColor: '#ffffff', color: '#0f172a', weight: 0.8, fillOpacity: 0.95 });
+      const fill = compMode ? competitionColor(b.ab) : '#ffffff';
+      const border = compMode ? (b.ab == null ? '#1e293b' : '#0a1628') : '#0f172a';
+      m.setStyle({ radius: radiusFor(currentMetric, val), fillColor: fill, color: border, weight: 0.8, fillOpacity: 0.95 });
       if (m.isPopupOpen()) renderPopup(m);
       toAdd.push(m);
       totV += b[vk]; totC += b.c; totSA++;
     }
     cluster.addLayers(toAdd);
     updateStats(totV, totC, totSA);
+    renderCompLegend();
+  }
+
+  function renderCompLegend() {
+    const el = document.getElementById('comp-legend');
+    if (currentColorMode !== 'comp') { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    el.innerHTML = `
+      <h2 style="margin-bottom:8px">colore: concorrenza</h2>
+      <div class="card" style="padding:12px 14px">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;text-transform:lowercase;">media offerenti per gara</div>
+        <div style="display:flex;height:12px;border-radius:4px;overflow:hidden;background:linear-gradient(to right,#dc2626,#ea580c,#f97316,#facc15,#84cc16,#16a34a);"></div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:lowercase;">
+          <span>1</span><span>2</span><span>3</span><span>5+</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:10.5px;color:var(--text-dim);text-transform:lowercase;">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#475569;"></span>
+          dati non pubblicati da anac (~83% delle sa)
+        </div>
+      </div>`;
   }
 
   function renderPopup(m){
@@ -631,6 +671,17 @@ async function loadGz(url) {
     html += '</ol>';
     html += '<div class="conc"><span>quota primo operatore (' + (currentMetric==='v'?'valore':'numero')+')</span><strong>' + pct(currentMetric==='v'?b.t1v:b.t1c) + '</strong></div>';
     html += '<div class="conc"><span>quota primi 3 operatori</span><strong>' + pct(currentMetric==='v'?b.t3v:b.t3c) + '</strong></div>';
+    // Competition stats
+    if (b.ab != null) {
+      html += '<div class="section-label" style="margin-top:8px">concorrenza · su ' + itf0.format(b.bn) + ' gare con dato pubblicato</div>';
+      html += '<div class="conc"><span>media offerenti per gara</span><strong>' + b.ab.toFixed(1).replace('.',',') + '</strong></div>';
+      html += '<div class="conc"><span>gare con un solo offerente</span><strong>' + pct(b.ps) + '</strong></div>';
+      if (b.ar != null) {
+        html += '<div class="conc"><span>ribasso medio del vincitore</span><strong>' + pct(b.ar) + '</strong></div>';
+      }
+    } else {
+      html += '<div class="section-label" style="margin-top:8px;color:var(--text-dim)">anac non pubblica dati sulle offerte per questa sa</div>';
+    }
     if (b.fd && b.fd > 0.5) {
       html += '<div class="ih-note" style="background:rgba(212,165,116,0.15);color:var(--amber)">attenzione: ' + pct(b.fd) + ' del valore di questa categoria proviene da un singolo accordo quadro pluriennale (annualizzato).</div>';
     }
@@ -665,6 +716,7 @@ async function loadGz(url) {
     <p><strong>valori annualizzati 2024.</strong> per ogni cig si prende l'<code>importo_lotto</code> (valore del singolo lotto) — non l'<code>importo_aggiudicazione</code>, che nei dati anac è spesso duplicato sul totale dell'accordo quadro padre. il valore viene poi <em>amortizzato</em> sulla <code>durata_prevista</code> del contratto: un appalto triennale da € 30 mln contribuisce € 10 mln al 2024.</p>
     <p><strong>filtri applicati.</strong> tenuti solo i cig con <code>data_aggiudicazione_definitiva</code> nel 2024 (esclude le aggiudicazioni 2023 che compaiono nei record cig-2024). esclusi i cig "padre" degli accordi quadro (il loro valore è già contato nei figli).</p>
     <p><strong>cap anti-anomalie.</strong> il valore annualizzato di ogni singolo cig è limitato a <strong>€ 100 mln</strong>. nei dati anac compaiono almeno 188 cig con importi palesemente errati (es. € 14 mld per un anno di gas, € 1,9 mld per una lavastoviglie, € 3 mld per un viaggio di istruzione) — typo di registrazione che inflavano i totali di ~€ 158 mld. i contratti reali super-grandi sono accordi quadro pluriennali, già correttamente ammortizzati.</p>
+    <p><strong>concorrenza (toggle in alto).</strong> per ogni gara: numero di offerenti ammessi e ribasso del vincitore (dati anac campo <code>numero_offerte_ammesse</code> + <code>ribasso_aggiudicazione</code>). aggregato a livello sa e operatore: media offerenti per gara, % gare con un solo offerente, ribasso medio. quando il toggle "concorrenza" è attivo, i punti sulla mappa sono colorati dal rosso (1 offerente medio) al verde (5+). <em>nota:</em> anac pubblica i dati sulle offerte solo per ~17% delle sa — le altre restano in grigio.</p>
     <p><strong>annualizzato vs nominale (toggle in alto).</strong> <em>annualizzato</em>: appalto pluriennale ripartito sulla durata, con cap di €100 mln/cig per escludere typo evidenti nei dati anac. è la vista "honest" — flusso reale 2024 ~€133 mld. <em>nominale</em>: valore totale registrato nell'anno di aggiudicazione, senza cap. riproduce la metodologia ufficiale anac (~€296 mld vs €272 mld anac 2024) ma include anche le anomalie di registrazione della fonte (es. €14 mld per un anno di gas, €1,9 mld per una lavastoviglie).</p>
     <p><strong>operatori — deduplicazione.</strong> aggregati per codice fiscale (cf / partita iva). quando il cf manca, normalizzazione del nome (maiuscolo, rimozione di srl/spa/ecc.) e raggruppamento.</p>
     <p><strong>rti e consorzi.</strong> per ogni cig si attribuisce l'aggiudicazione al ruolo prevalente. le aggiudicazioni a rti sono segnalate con il tag <span class="pill rti">rti</span>.</p>
@@ -688,6 +740,14 @@ async function loadGz(url) {
       document.querySelectorAll('#value-mode-toggle button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentValueMode = btn.dataset.vm;
+      restyleAll();
+    });
+  });
+  document.querySelectorAll('#color-mode-toggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#color-mode-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentColorMode = btn.dataset.cm;
       restyleAll();
     });
   });
@@ -1021,9 +1081,18 @@ async function loadGz(url) {
       const active = o.key === selectedKey ? ' active' : '';
       const valStr = currentSort === 'v' ? '<strong>' + eurShort(v) + '</strong>' : eurShort(v);
       const cntStr = currentSort === 'c' ? '<strong>' + itf0.format(c) + ' contratti</strong>' : itf0.format(c) + ' contratti';
+      // Inline competition signal: average bidders when this op wins (if data)
+      let compStr = '';
+      if (o.ab != null) {
+        const color = o.ab <= 1.5 ? '#dc2626' : o.ab <= 3 ? '#facc15' : '#16a34a';
+        compStr = '<span style="color:' + color + ';">media ' + o.ab.toFixed(1).replace('.',',') + ' offerenti</span>';
+      } else {
+        compStr = '<span style="color:var(--text-dim);">offerte non pubblicate</span>';
+      }
       return '<div class="op-row' + active + '" data-key="' + esc(o.key) + '">' +
         '<div class="name">' + esc((o.n || '').toLowerCase()) + '</div>' +
-        '<div class="meta">' + valStr + ' · ' + cntStr + ' · ' + itf0.format(o.nsa) + ' sa · ' + itf0.format(o.nrg) + ' regioni</div>' +
+        '<div class="meta">' + valStr + ' · ' + cntStr + ' · ' + itf0.format(o.nsa) + ' sa</div>' +
+        '<div class="meta" style="margin-top:2px">' + compStr + '</div>' +
         '</div>';
     }).join('');
     // hook up clicks
@@ -1083,6 +1152,25 @@ async function loadGz(url) {
     html += '<div class="stat-card"><div class="label">quota top-1 cliente</div><div class="value">' + pct(o.t1s) + '</div><div class="sub">peso del primo cliente sul fatturato</div></div>';
     html += '<div class="stat-card"><div class="label">quota top-3 clienti</div><div class="value">' + pct(o.t3s) + '</div><div class="sub">peso dei primi 3 clienti</div></div>';
     html += '</div>';
+
+    // Competition received: how contested were this operator's wins?
+    if (o.ab != null) {
+      html += '<div class="section-title">concorrenza ricevuta · su ' + itf0.format(o.bn) + ' gare con dato pubblicato</div>';
+      html += '<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">';
+      const compColor = o.ab <= 1.5 ? 'var(--amber)' : o.ab <= 3 ? '#facc15' : '#84cc16';
+      html += '<div class="stat-card"><div class="label">media offerenti</div><div class="value" style="color:' + compColor + '">' + o.ab.toFixed(1).replace('.',',') + '</div><div class="sub">per gara vinta</div></div>';
+      const singleColor = o.ps >= 0.5 ? 'var(--amber)' : o.ps >= 0.25 ? '#facc15' : '#84cc16';
+      html += '<div class="stat-card"><div class="label">vinte senza concorrenti</div><div class="value" style="color:' + singleColor + '">' + pct(o.ps) + '</div><div class="sub">gare con 1 solo offerente</div></div>';
+      if (o.ar != null) {
+        html += '<div class="stat-card"><div class="label">ribasso medio offerto</div><div class="value">' + pct(o.ar) + '</div><div class="sub">sconto medio sul base d\'asta</div></div>';
+      } else {
+        html += '<div class="stat-card"><div class="label">ribasso medio offerto</div><div class="value" style="color:var(--text-dim)">n.d.</div><div class="sub">non pubblicato</div></div>';
+      }
+      html += '</div>';
+    } else {
+      html += '<div class="section-title">concorrenza ricevuta</div>';
+      html += '<div class="card" style="color:var(--text-dim);font-size:12px">anac non pubblica dati sulle offerte ricevute per nessuna delle gare vinte da questo operatore.</div>';
+    }
 
     // Footprint: top SAs list + mini map
     html += '<div class="section-title">footprint · top 10 stazioni appaltanti per valore</div>';
